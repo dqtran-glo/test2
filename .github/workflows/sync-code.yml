@@ -1,21 +1,41 @@
-name: Log Branch History
+name: Sync to Repo B
 
 on:
   push:
-    branches: [ main, develop ] # Change these to your specific branches
-  workflow_dispatch:          # Allows you to run this manually
+    branches:
+        - develop
+        - main
 
 jobs:
-  log-changes:
+  create-pr-in-repo-b:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repo A
         uses: actions/checkout@v4
         with:
-          # "0" indicates all history for all branches and tags
           fetch-depth: 0
 
-      - name: Log Commit History
+      - name: Push to Repo B
+        env:
+          # Format: https://<token>@github.com/owner/repo-b.git
+          DEST_REPO: "https://${{ secrets.PAT_TOKEN }}@github.com/YOUR_ORG/REPO_B.git"
         run: |
-          echo "### Full Commit History for ${{ github.ref_name }} ###"
-          git log --oneline --graph --decorate -n 20
+          # Configure Git
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add Repo B as a remote and push the current branch
+          git remote add destination $DEST_REPO
+          git push destination ${{ github.ref_name }} --force
+
+      - name: Create Pull Request in Repo B
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          # Use the GitHub CLI (gh) to create the PR in the destination repo
+          gh pr create \
+            --repo YOUR_ORG/REPO_B \
+            --title "Sync: ${{ github.event.head_commit.message }}" \
+            --body "Automated PR from Repo A. Triggered by commit ${{ github.sha }}" \
+            --head ${{ github.ref_name }} \
+            --base main
