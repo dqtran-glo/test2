@@ -4,11 +4,17 @@ on:
   push:
     branches:
       - develop
-      - main 
+      - main
 
 jobs:
   create-pr-in-repo-b:
     runs-on: ubuntu-latest
+    env:
+      REPO_B: dqtran-glo/test2
+      # Never push to BASE_BRANCH on repo B; only push this head branch, then open a PR into BASE_BRANCH.
+      BASE_BRANCH: main
+      SOURCE_REF: ${{ github.ref_name }}
+      SYNC_BRANCH: sync/${{ github.ref_name }}
     steps:
       - name: Checkout Repo A
         uses: actions/checkout@v4
@@ -18,37 +24,38 @@ jobs:
           # github.com, and git push uses that (github-actions[bot]) instead of the PAT in the URL.
           persist-credentials: false
 
-      - name: Push to Repo B
+      - name: Push sync branch to Repo B (does not update main)
         env:
           PAT: ${{ secrets.PAT_TOKEN }}
-          # Construct the URL with the token directly for the push command
-          DEST_URL: "https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/dqtran-glo/test2.git"
         run: |
           echo "PAT length: ${#PAT}"
+          if [ "$SYNC_BRANCH" = "$BASE_BRANCH" ]; then
+            echo "Refusing to push: SYNC_BRANCH must not equal BASE_BRANCH (would bypass PR)."
+            exit 1
+          fi
+
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Add Repo B as a remote
+
+          DEST_URL="https://x-access-token:${PAT}@github.com/${REPO_B}.git"
           git remote add destination "$DEST_URL"
-          
-          # Push the local branch to a branch of the SAME name on Repo B
-          # Syntax: git push remote local_branch_name:remote_branch_name
-          git push destination ${{ github.ref_name }}:${{ github.ref_name }} --force
+
+          # Explicit refspec: only refs/heads/$SYNC_BRANCH on repo B is created/updated — not main.
+          git push destination "refs/heads/${SOURCE_REF}:refs/heads/${SYNC_BRANCH}" --force
 
       - name: Create Pull Request in Repo B
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Check if a PR already exists for this branch to prevent workflow failure
-          PR_EXISTS=$(gh pr list --repo dqtran-glo/test2 --head ${{ github.ref_name }} --json number --jq '.[0].number')
-          
-          if [ -z "$PR_EXISTS" ]; then
+          PR_EXISTS=$(gh pr list --repo "$REPO_B" --head "$SYNC_BRANCH" --base "$BASE_BRANCH" --json number --jq '.[0].number')
+
+          if [ -z "$PR_EXISTS" ] || [ "$PR_EXISTS" = "null" ]; then
             gh pr create \
-              --repo dqtran-glo/test2 \
-              --title "Sync: ${{ github.ref_name }} from Repo A" \
+              --repo "$REPO_B" \
+              --title "Sync: ${SOURCE_REF} from Repo A" \
               --body "Automated sync from Repo A. Triggered by commit ${{ github.sha }}" \
-              --head ${{ github.ref_name }} \
-              --base main
+              --head "$SYNC_BRANCH" \
+              --base "$BASE_BRANCH"
           else
-            echo "PR already exists (#$PR_EXISTS). Updates were pushed to the existing PR."
+            echo "PR already exists (#$PR_EXISTS). Updates were pushed to the existing PR branch $SYNC_BRANCH."
           fi
