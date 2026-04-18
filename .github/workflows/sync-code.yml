@@ -41,13 +41,18 @@ jobs:
           export GIT_COMMITTER_EMAIL="$(git show -s --format=%ce "$TRIGGER_SHA")"
           export GIT_COMMITTER_DATE="$(git show -s --format=%ci "$TRIGGER_SHA")"
 
-          TREE="$(git rev-parse "$TRIGGER_SHA^{tree}")"
-          SINGLE_SHA="$(git show -s --format=%B "$TRIGGER_SHA" | git commit-tree "$TREE")"
-
           DEST_URL="https://x-access-token:${PAT}@github.com/${REPO_B}.git"
           git remote add destination "$DEST_URL"
 
-          # Exactly one commit on Repo B for this branch; same tree/message/author as TRIGGER_SHA on Repo A.
+          # Parent must be Repo B's BASE_BRANCH tip so the head branch shares history with the PR base
+          # (orphan commits cause: "branch has no history in common with main").
+          git fetch destination "+refs/heads/${BASE_BRANCH}:refs/__sync_parent__"
+          PARENT="$(git rev-parse refs/__sync_parent__)"
+
+          TREE="$(git rev-parse "$TRIGGER_SHA^{tree}")"
+          SINGLE_SHA="$(git show -s --format=%B "$TRIGGER_SHA" | git commit-tree "$TREE" -p "$PARENT")"
+
+          # One new commit on top of Repo B's BASE_BRANCH; same tree/message/author as TRIGGER_SHA on Repo A.
           git push destination "${SINGLE_SHA}:refs/heads/${SOURCE_REF}" --force
 
       - name: Create Pull Request in Repo B
