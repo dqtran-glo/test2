@@ -1,54 +1,40 @@
-name: Sync to Repo B
+name: Sync to Repo B (Metadata Version)
 
 on:
-  push:
+  pull_request:
     branches:
-      - develop
-      - main 
+      - main
+    types: [closed]
 
 jobs:
-  create-pr-in-repo-b:
+  sync:
+    # Only run if the PR was actually merged, not just closed
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo A
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Otherwise checkout persists GITHUB_TOKEN as an Authorization header for
-          # github.com, and git push uses that (github-actions[bot]) instead of the PAT in the URL.
           persist-credentials: false
 
-      - name: Push to Repo B
+      - name: Push and PR to Repo B
         env:
-          PAT: ${{ secrets.PAT_TOKEN }}
-          # Construct the URL with the token directly for the push command
-          DEST_URL: "https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/dqtran-glo/test2.git"
+          # Logic: Get the branch name directly from the PR metadata
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO_B_NAME: "dqtran-glo/test2"
         run: |
-          echo "PAT length: ${#PAT}"
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # 1. Setup destination
+          git remote add destination "https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/dqtran-glo/test2.git"              
           
-          # Add Repo B as a remote
-          git remote add destination "$DEST_URL"
-          
-          # Push the local branch to a branch of the SAME name on Repo B
-          # Syntax: git push remote local_branch_name:remote_branch_name
-          git push destination ${{ github.ref_name }}:${{ github.ref_name }} --force
+          # 2. Push the specific branch that was just merged
+          # We use the head_sha to ensure we get the exact state of the PR
+          git push destination ${{ github.event.pull_request.head.sha }}:refs/heads/$SOURCE_BRANCH --force
 
-      - name: Create Pull Request in Repo B
-        env:
-          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: |
-          # Check if a PR already exists for this branch to prevent workflow failure
-          PR_EXISTS=$(gh pr list --repo dqtran-glo/test2 --head ${{ github.ref_name }} --json number --jq '.[0].number')
-          
-          if [ -z "$PR_EXISTS" ]; then
-            gh pr create \
-              --repo dqtran-glo/test2 \
-              --title "Sync: ${{ github.ref_name }} from Repo A" \
-              --body "Automated sync from Repo A. Triggered by commit ${{ github.sha }}" \
-              --head ${{ github.ref_name }} \
-              --base main
-          else
-            echo "PR already exists (#$PR_EXISTS). Updates were pushed to the existing PR."
-          fi
+          # 3. Create PR in Repo B
+          gh pr create \
+            --repo $REPO_B_NAME \
+            --head $SOURCE_BRANCH \
+            --base main \
+            --title "Sync: $SOURCE_BRANCH" \
+            --body "Automated sync from Repo A PR #${{ github.event.pull_request.number }}"
