@@ -1,0 +1,53 @@
+name: Receive from Repo A
+
+on:
+  repository_dispatch:
+    types: [run-from-repo-a]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Print branch
+        run: |
+          echo "Branch from Repo A: ${{ github.event.client_payload.branch }}"
+
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: set branch name
+        run: |
+          echo "BRANCH_NAME=${{ github.event.client_payload.branch }}" >> $GITHUB_ENV
+
+      - name: set upstream
+        run: git remote add upstream git@github.com:dqtran-glo/test.git
+
+      - name: fetch upstream
+        run: git fetch upstream
+
+      - name: checkout branch
+        run: git checkout -b $BRANCH_NAME
+
+      - name: cherry pick
+        run: git cherry-pick upstream/$BRANCH_NAME || true
+
+      - name: push
+        run: git push origin $BRANCH_NAME
+
+      - name: create pull request
+        env:
+            GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run : |
+         PR_EXISTS=$(gh pr list --repo dqtran-glo/test2 --head ${{ github.event.client.payload.branch }} --json number --jq '.[0].number')
+          
+          if [ -z "$PR_EXISTS" ]; then
+            gh pr create \
+              --repo dqtran-glo/test2 \
+              --head $BRANCH_NAME \
+              --base main \
+              --title "Sync: $BRANCH_NAME" \
+              --body "Automated sync from Repo A"
+          else
+            echo "PR already exists in Repo B: #$PR_EXISTS"
+          fi
