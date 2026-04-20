@@ -48,8 +48,11 @@ jobs:
         env:
             GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run : |
-         PR_EXISTS=$(gh pr list --repo dqtran-glo/test2 --head ${{ github.event.client_payload.branch }} --json number --jq '.[0].number')
-          
+          PR_EXISTS=$(gh pr list \
+                --repo dqtran-glo/test2 \
+                --head "$BRANCH_NAME" \
+                --json number \
+                --jq '.[0].number')          
           if [ -z "$PR_EXISTS" ]; then
             gh pr create \
               --repo dqtran-glo/test2 \
