@@ -18,6 +18,11 @@ jobs:
           persist-credentials: false
         uses: actions/checkout@v4
 
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
       - name: set branch name
         run: |
           echo "BRANCH_NAME=${{ github.event.client_payload.branch }}" >> $GITHUB_ENV
