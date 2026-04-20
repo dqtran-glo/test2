@@ -20,7 +20,7 @@ jobs:
 
       - name: set branch name
         run: |
-          echo "BRANCH_NAME=${{ github.event.client_payload.branch }}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${{ github.event.client_payload.branch2 }}" >> $GITHUB_ENV
 
       - name: set upstream
         run: git remote add upstream https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/dqtran-glo/test.git
